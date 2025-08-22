@@ -1,17 +1,23 @@
 import os
 import sys
-import pickle
 import numpy as np
+import pandas as pd
 from dataclasses import dataclass
 
 from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, AdaBoostClassifier
+from sklearn.svm import SVC
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.naive_bayes import GaussianNB
+from xgboost import XGBClassifier
+from catboost import CatBoostClassifier
 
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+from sklearn.model_selection import GridSearchCV
 from src.exception import CustomException
 from src.logger import logging
-from src.components.data_ingestion import DataIngestion
-from src.components.data_transformation import DataTransformation
+from src.utils import save_object
 
 
 @dataclass
@@ -23,59 +29,110 @@ class ModelTrainer:
     def __init__(self):
         self.model_trainer_config = ModelTrainerConfig()
 
-    def initiate_model_training(self, train_arr, test_arr):
-        try:
-            logging.info("Splitting train and test input data")
-            X_train, y_train, X_test, y_test = (
-                train_arr[:, :-1],
-                train_arr[:, -1],
-                test_arr[:, :-1],
-                test_arr[:, -1],
-            )
+    def evaluate_models(self, X_train, y_train, X_test, y_test, models, params=None):
+        report = {}
+        best_models = {}
 
-            # Try two models
+        for model_name, model in models.items():
+            try:
+                # If params exist for this model → do hyperparameter tuning
+                if params and model_name in params:
+                    logging.info(f"Tuning {model_name} with GridSearchCV...")
+                    gs = GridSearchCV(model, params[model_name], cv=3, n_jobs=-1, verbose=0, scoring="f1")
+                    gs.fit(X_train, y_train)
+                    best_model = gs.best_estimator_
+                else:
+                    best_model = model
+                    best_model.fit(X_train, y_train)
+
+                # Predictions
+                y_pred = best_model.predict(X_test)
+
+                # Metrics
+                acc = accuracy_score(y_test, y_pred)
+                prec = precision_score(y_test, y_pred, zero_division=0)
+                rec = recall_score(y_test, y_pred, zero_division=0)
+                f1 = f1_score(y_test, y_pred, zero_division=0)
+
+                try:
+                    auc = roc_auc_score(y_test, best_model.predict_proba(X_test)[:, 1])
+                except:
+                    auc = 0.0
+
+                report[model_name] = {
+                    "Accuracy": acc,
+                    "Precision": prec,
+                    "Recall": rec,
+                    "F1-score": f1,
+                    "ROC-AUC": auc
+                }
+
+                best_models[model_name] = best_model
+
+                logging.info(f"{model_name} trained successfully")
+
+            except Exception as e:
+                logging.error(f"Error training {model_name}: {e}")
+
+        return report, best_models
+
+    def initiate_model_trainer(self, X_train, y_train, X_test, y_test):
+        try:
             models = {
                 "Logistic Regression": LogisticRegression(max_iter=1000),
+                "Decision Tree": DecisionTreeClassifier(),
                 "Random Forest": RandomForestClassifier(),
+                "Gradient Boosting": GradientBoostingClassifier(),
+                "AdaBoost": AdaBoostClassifier(),
+                "SVM": SVC(probability=True),
+                "KNN": KNeighborsClassifier(),
+                "Naive Bayes": GaussianNB(),
+                "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric="logloss"),
+                "CatBoost": CatBoostClassifier(verbose=0)
             }
 
-            best_model = None
-            best_score = 0
-            best_model_name = None
+            params = {
+                "Decision Tree": {
+                    "criterion": ["gini", "entropy", "log_loss"],
+                    "splitter": ["best", "random"],
+                    "max_depth": [None, 5, 10, 20]
+                },
+                "Random Forest": {
+                    "criterion": ["gini", "entropy", "log_loss"],
+                    "max_features": ["sqrt", "log2"],
+                    "n_estimators": [50, 100, 200]
+                },
+                "Gradient Boosting": {
+                    "learning_rate": [0.1, 0.01, 0.05],
+                    "subsample": [0.6, 0.8, 1.0],
+                    "n_estimators": [50, 100, 200],
+                    "max_depth": [3, 5, 10]
+                }
+            }
 
-            for name, model in models.items():
-                model.fit(X_train, y_train)
-                y_pred = model.predict(X_test)
-                acc = accuracy_score(y_test, y_pred)
-                logging.info(f"{name} Accuracy: {acc}")
+            # Evaluate with hyperparameter tuning
+            model_report, best_models = self.evaluate_models(
+                X_train, y_train, X_test, y_test, models=models, params=params
+            )
 
-                if acc > best_score:
-                    best_score = acc
-                    best_model = model
-                    best_model_name = name
+            # Pick best model
+            best_model_name = max(model_report, key=lambda k: model_report[k]["F1-score"])
+            best_model_score = model_report[best_model_name]["F1-score"]
+            best_model = best_models[best_model_name]
 
-            logging.info(f"Best Model: {best_model_name} with Accuracy: {best_score}")
+            if best_model_score < 0.6:
+                raise CustomException("No suitable model found")
 
-            # Save the best model
-            os.makedirs(os.path.dirname(self.model_trainer_config.trained_model_file_path), exist_ok=True)
-            with open(self.model_trainer_config.trained_model_file_path, "wb") as f:
-                pickle.dump(best_model, f)
+            logging.info(f"Best model: {best_model_name} with F1-score: {best_model_score}")
 
-            return best_model_name, best_score
+            # Save best model
+            save_object(
+                file_path=self.model_trainer_config.trained_model_file_path,
+                obj=best_model
+            )
+
+            return best_model_name, best_model_score, model_report
 
         except Exception as e:
             raise CustomException(e, sys)
 
-
-if __name__ == "__main__":
-    # Run full pipeline
-    ingestion = DataIngestion()
-    train_path, test_path = ingestion.initiate_data_ingestion()
-
-    transformation = DataTransformation()
-    train_arr, test_arr, _ = transformation.initiate_data_transformation(train_path, test_path)
-
-    trainer = ModelTrainer()
-    best_model_name, best_score = trainer.initiate_model_training(train_arr, test_arr)
-
-    print(f"✅ Best Model: {best_model_name} with Accuracy: {best_score}")

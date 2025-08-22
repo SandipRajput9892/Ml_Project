@@ -1,4 +1,5 @@
 import sys
+import numpy as np
 from src.exception import CustomException
 from src.logger import logging
 from src.components.data_ingestion import DataIngestion
@@ -19,11 +20,17 @@ if __name__ == "__main__":
             train_path, test_path
         )
 
+        # Split features (X) and target (y)
+        X_train, y_train = train_arr[:, :-1], train_arr[:, -1]
+        X_test, y_test = test_arr[:, :-1], test_arr[:, -1]
+
         # 3. Model Training
-        trainer_obj = ModelTrainer()
-        trainer_obj.initiate_model_training(train_arr, test_arr)
+        model_trainer = ModelTrainer()
+        best_model_name, best_model_score, model_report = model_trainer.initiate_model_trainer(
+            X_train, y_train, X_test, y_test
+        )
 
-
+        logging.info(f"Best model: {best_model_name} with score: {best_model_score}")
         logging.info(">>>> Training Pipeline Completed Successfully <<<<")
 
     except Exception as e:

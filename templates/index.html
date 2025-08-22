@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Predictive Maintenance</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<body class="bg-light">
+    <div class="container mt-5">
+        <h2 class="text-center">Predict Machine Failure</h2>
+        <form action="/predict" method="post" class="mt-4">
+
+            <div class="mb-3">
+                <label for="air_temp" class="form-label">Air Temperature [K]</label>
+                <input type="number" step="any" class="form-control" id="air_temp" name="air_temp" required>
+            </div>
+
+            <div class="mb-3">
+                <label for="process_temp" class="form-label">Process Temperature [K]</label>
+                <input type="number" step="any" class="form-control" id="process_temp" name="process_temp" required>
+            </div>
+
+            <div class="mb-3">
+                <label for="rot_speed" class="form-label">Rotational Speed [rpm]</label>
+                <input type="number" step="any" class="form-control" id="rot_speed" name="rot_speed" required>
+            </div>
+
+            <div class="mb-3">
+                <label for="torque" class="form-label">Torque [Nm]</label>
+                <input type="number" step="any" class="form-control" id="torque" name="torque" required>
+            </div>
+
+            <div class="mb-3">
+                <label for="tool_wear" class="form-label">Tool Wear [min]</label>
+                <input type="number" step="any" class="form-control" id="tool_wear" name="tool_wear" required>
+            </div>
+
+            <div class="mb-3">
+                <label for="product_type" class="form-label">Product Type [L, M, or H]</label>
+                <input type="text" class="form-control" id="product_type" name="product_type" required>
+            </div>
+            
+            <div class="mb-3">
+                <label for="twf" class="form-label">Tool Wear Failure [0 or 1]</label>
+                <input type="number" step="any" class="form-control" id="twf" name="twf" required>
+            </div>
+
+            <div class="mb-3">
+                <label for="hdf" class="form-label">Heat Dissipation Failure [0 or 1]</label>
+                <input type="number" step="any" class="form-control" id="hdf" name="hdf" required>
+            </div>
+
+            <button type="submit" class="btn btn-primary w-100">Predict</button>
+        </form>
+    </div>
+</body>
+</html>
